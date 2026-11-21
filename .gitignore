@@ -1,0 +1,32 @@
+# --- Dependencies ---
+node_modules/
+.vite/
+
+# --- Build output ---
+dist/
+dist-ssr/
+*.tsbuildinfo
+
+# --- Rust / Tauri ---
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# --- Local packages / artifacts ---
+artifacts/
+release/
+*.log
+*.local
+
+# --- Local environment ---
+.env
+.env.*
+!.env.example
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Editor ---
+.vscode/*
+!.vscode/extensions.json
+.idea/

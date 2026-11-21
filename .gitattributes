@@ -1,0 +1,20 @@
+# Normalize source text to LF regardless of the committing OS.
+* text=auto eol=lf
+
+*.rs    text eol=lf
+*.ts    text eol=lf
+*.js    text eol=lf
+*.svelte text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+*.md    text eol=lf
+
+# Keep binary assets verbatim.
+*.png   binary
+*.ico   binary
+*.icns  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
