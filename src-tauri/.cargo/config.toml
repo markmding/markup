@@ -1,0 +1,7 @@
+# 国内构建建议使用 rsproxy 稀疏镜像。
+# 如需恢复官方源，删除本文件或注释 [source] 段即可。
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
