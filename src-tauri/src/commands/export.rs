@@ -24,17 +24,11 @@ pub fn write_export_files(dest: String, files: Vec<ExportFile>) -> AppResult<usi
     let mut written = 0usize;
     for file in files {
         if !is_safe_relative(&file.path) {
-            return Err(AppError::Message(format!(
-                "导出路径非法：{}",
-                file.path
-            )));
+            return Err(AppError::Message(format!("导出路径非法：{}", file.path)));
         }
         let target = normalize(&dest_norm.join(&file.path));
         if !target.starts_with(&dest_norm) {
-            return Err(AppError::Message(format!(
-                "导出路径越界：{}",
-                file.path
-            )));
+            return Err(AppError::Message(format!("导出路径越界：{}", file.path)));
         }
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;

@@ -6,6 +6,8 @@ export type AppTheme = 'light' | 'dark' | 'system'
 
 export interface SettingsState {
   theme: AppTheme
+  /** `light` | `dark` | `theme:<vault-relative-path>` */
+  documentTheme: string
   editorFontSize: number
   /** F2.8 timer autosave (independent switch) */
   autosaveTimer: boolean
@@ -13,6 +15,10 @@ export interface SettingsState {
   /** F2.8 blur autosave (independent switch) */
   autosaveBlur: boolean
   spellcheck: boolean
+  /** Render Mermaid diagrams in export preview / exported HTML */
+  renderMermaid: boolean
+  /** Skip rendering off-screen blocks in long documents (F2.7 stage 1) */
+  chunkedRendering: boolean
   /** F7.4 export defaults */
   defaultHtmlMode: HtmlExportMode
   defaultPageStart: number
@@ -22,11 +28,14 @@ export interface SettingsState {
 
 const defaults: SettingsState = {
   theme: 'light',
+  documentTheme: 'light',
   editorFontSize: 16,
   autosaveTimer: true,
   autosaveInterval: 30,
   autosaveBlur: true,
   spellcheck: false,
+  renderMermaid: true,
+  chunkedRendering: true,
   defaultHtmlMode: 'folder',
   defaultPageStart: 1,
   defaultPageRange: 'all',

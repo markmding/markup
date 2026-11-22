@@ -1,4 +1,5 @@
 import { readAttachment } from '../api/vault'
+import { mimeOf } from '../mime'
 import type { ExportFile, HtmlExportMode } from '../types'
 import { collectAssetPaths, renderMarkdown, renderMermaid } from './markdown'
 import { buildDocument, exportThemeCss } from './themes'
@@ -9,6 +10,10 @@ export interface HtmlExportOptions {
   title: string
   mode: HtmlExportMode
   theme: 'light' | 'dark'
+  /** Set false to keep mermaid fenced blocks as source code */
+  renderDiagrams?: boolean
+  /** Vault theme CSS appended after the built-in theme */
+  customCss?: string
 }
 
 export interface HtmlExportResult {
@@ -18,22 +23,6 @@ export interface HtmlExportResult {
   files: ExportFile[]
   /** Referenced assets that could not be read from the vault */
   missing: string[]
-}
-
-const MIME: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  svg: 'image/svg+xml',
-  bmp: 'image/bmp',
-  avif: 'image/avif'
-}
-
-function mimeOf(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase() ?? ''
-  return MIME[ext] ?? 'application/octet-stream'
 }
 
 function replaceImageSources(
@@ -50,7 +39,11 @@ function replaceImageSources(
 }
 
 export async function buildHtmlExport(options: HtmlExportOptions): Promise<HtmlExportResult> {
-  const body = await renderMermaid(await renderMarkdown(options.markdown), options.theme === 'dark')
+  const rendered = await renderMarkdown(options.markdown)
+  const body =
+    options.renderDiagrams === false
+      ? rendered
+      : await renderMermaid(rendered, options.theme === 'dark')
 
   const assets = collectAssetPaths(options.markdown)
   const base64 = new Map<string, string>()
@@ -69,13 +62,13 @@ export async function buildHtmlExport(options: HtmlExportOptions): Promise<HtmlE
       return data ? `data:${mimeOf(key)};base64,${data}` : null
     })
     return {
-      html: buildDocument(options.title, inlined, options.theme),
+      html: buildDocument(options.title, inlined, options.theme, options.customCss),
       files: [],
       missing
     }
   }
 
-  const html = buildDocument(options.title, body, options.theme)
+  const html = buildDocument(options.title, body, options.theme, options.customCss)
   const files: ExportFile[] = [
     { path: 'index.html', encoding: 'utf8', content: html },
     ...assets

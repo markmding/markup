@@ -79,6 +79,20 @@ const EXPORT_GUIDE = `# 导出指南
 > 导出的样式跟随当前主题，主题需要包含 \`@media print\` 规则。
 `
 
+const DEMO_THEME = `/* Markup 示例主题：暖阳 */
+.milkdown .ProseMirror h1,
+.milkdown .ProseMirror h2,
+.markup-doc h1,
+.markup-doc h2 {
+  color: #b45309;
+}
+
+.milkdown .ProseMirror blockquote,
+.markup-doc blockquote {
+  border-left-color: #f59e0b;
+}
+`
+
 const TEMPLATE = `# 新文档
 
 ## 概要
@@ -100,7 +114,10 @@ interface MockState {
   files: Map<string, string>
   mtimes: Map<string, number>
   meta: Map<string, DocMeta>
+  attachments: Map<string, string>
   dirs: Set<string>
+  /** Dev-only: next save for these paths fails with a CONFLICT (banner test). */
+  conflictOnce: Set<string>
 }
 
 function createState(): MockState {
@@ -109,7 +126,8 @@ function createState(): MockState {
     ['欢迎使用 Markup.md', WELCOME],
     ['指南/快捷键.md', SHORTCUTS],
     ['指南/导出指南.md', EXPORT_GUIDE],
-    ['templates/默认模板.md', TEMPLATE]
+    ['templates/默认模板.md', TEMPLATE],
+    ['themes/暖阳.css', DEMO_THEME]
   ])
   const mtimes = new Map<string, number>()
   const meta = new Map<string, DocMeta>()
@@ -123,7 +141,9 @@ function createState(): MockState {
     files,
     mtimes,
     meta,
-    dirs: new Set(['attachments', 'themes', 'templates', '指南'])
+    attachments: new Map<string, string>(),
+    dirs: new Set(['attachments', 'themes', 'templates', '指南']),
+    conflictOnce: new Set<string>()
   }
 }
 
@@ -239,6 +259,10 @@ export const mock = {
   },
 
   writeDoc(path: string, content: string, options: WriteOptions): WriteResult {
+    if (state.conflictOnce.has(path)) {
+      state.conflictOnce.delete(path)
+      throw new Error(`CONFLICT:${Date.now()}`)
+    }
     state.files.set(path, content)
     const mtime = Date.now()
     state.mtimes.set(path, mtime)
@@ -268,12 +292,25 @@ export const mock = {
     removePrefix(path)
   },
 
-  saveAttachment(name: string, _base64: string): SaveAttachmentResult {
-    const path = `attachments/${name}`
-    state.files.set(path, '[demo attachment]')
-    state.mtimes.set(path, Date.now())
-    state.meta.set(path, { encoding: 'utf8', eol: 'lf', bom: false })
-    return { path, name }
+  saveAttachment(name: string, base64: string): SaveAttachmentResult {
+    let stored = name
+    let path = `attachments/${stored}`
+    let index = 1
+    while (state.attachments.has(path)) {
+      const dot = name.lastIndexOf('.')
+      stored =
+        dot > 0
+          ? `${name.slice(0, dot)}-${index}${name.slice(dot)}`
+          : `${name}-${index}`
+      path = `attachments/${stored}`
+      index += 1
+    }
+    state.attachments.set(path, base64)
+    return { path, name: stored }
+  },
+
+  readAttachment(path: string): string | null {
+    return state.attachments.get(path) ?? null
   },
 
   search(query: string): SearchHit[] {
@@ -295,7 +332,19 @@ export const mock = {
     return hits
   },
 
+  /** Dev-only helper used by Settings/automation to exercise the conflict banner. */
+  markExternalChange(path: string): void {
+    const current = state.files.get(path) ?? ''
+    state.files.set(path, `${current}\n\n> 来自外部的修改\n`)
+    state.mtimes.set(path, Date.now())
+    state.conflictOnce.add(path)
+  },
+
   reset(): void {
     state = createState()
   }
+}
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as Window & { __markupMock?: typeof mock }).__markupMock = mock
 }

@@ -16,6 +16,8 @@
 | `save_attachment` | `vault`, `name`, `data` | `{ path, name }` | `data` 为 base64；自动去重命名 |
 | `read_attachment` | `vault`, `rel` | `string \| null` | 返回 base64；>100MB 或缺省返回 `null` |
 
+> `open_vault` 的文件树与 `search_vault` 使用同一套忽略规则：`.gitignore`、`.ignore`、`.markupignore`（无需 Vault 是 Git 仓库），并内置跳过 `node_modules`、`target`、`.git` 等目录。
+
 ## 搜索
 
 | 命令 | 参数 | 返回 |

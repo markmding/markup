@@ -1,12 +1,13 @@
 use crate::encoding;
 use crate::error::{AppError, AppResult};
-use crate::paths::{ensure_vault_dirs, normalize, resolve_in_vault, SKIP_DIRS};
+use crate::paths::{ensure_vault_dirs, normalize, resolve_in_vault, vault_walker};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Serialize;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_ATTACHMENT_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_TREE_DEPTH: usize = 20;
@@ -71,38 +72,65 @@ fn to_rel(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
-fn read_tree(root: &Path, dir: &Path, depth: usize) -> AppResult<Vec<Entry>> {
-    if depth > MAX_TREE_DEPTH {
-        return Ok(Vec::new());
-    }
-    let mut entries = Vec::new();
-    for item in fs::read_dir(dir)? {
-        let item = item?;
-        let name = item.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
+/// Collects the paths approved by the ignore-aware walker, then builds the
+/// nested tree from them. This keeps .gitignore / .markupignore semantics in
+/// one place while preserving sorted, lazily-shaped output.
+fn read_tree(root: &Path) -> AppResult<Vec<Entry>> {
+    let mut allowed = HashSet::new();
+    for result in vault_walker(root) {
+        let Ok(entry) = result else { continue };
+        if entry.depth() == 0 {
             continue;
         }
-        let path = item.path();
-        let file_type = item.file_type()?;
+        if let Ok(rel) = entry.path().strip_prefix(root) {
+            allowed.insert(rel.to_path_buf());
+        }
+    }
+    Ok(build_tree(root, Path::new(""), &allowed, 0))
+}
+
+fn build_tree(root: &Path, rel: &Path, allowed: &HashSet<PathBuf>, depth: usize) -> Vec<Entry> {
+    if depth > MAX_TREE_DEPTH {
+        return Vec::new();
+    }
+    let dir = if rel.as_os_str().is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(rel)
+    };
+    let Ok(read) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+
+    let mut entries = Vec::new();
+    for item in read.flatten() {
+        let name = item.file_name().to_string_lossy().to_string();
+        let child_rel = rel.join(item.file_name());
+        if !allowed.contains(&child_rel) {
+            continue;
+        }
+        let Ok(file_type) = item.file_type() else {
+            continue;
+        };
+        let child_path = item.path();
+        let rel_string = to_rel(root, &child_path);
+
         if file_type.is_dir() {
-            if SKIP_DIRS.contains(&name.as_str()) {
-                continue;
-            }
-            let children = read_tree(root, &path, depth + 1)?;
+            let children = build_tree(root, &child_rel, allowed, depth + 1);
             entries.push(Entry {
                 name,
-                path: to_rel(root, &path),
+                path: rel_string,
                 kind: "dir".into(),
                 mtime: None,
                 children: Some(children),
             });
         } else if file_type.is_file() {
-            let meta = item.metadata()?;
+            let mtime = item.metadata().ok().map(|meta| mtime_ms(&meta));
             entries.push(Entry {
                 name,
-                path: to_rel(root, &path),
+                path: rel_string,
                 kind: "file".into(),
-                mtime: Some(mtime_ms(&meta)),
+                mtime,
                 children: None,
             });
         }
@@ -113,7 +141,7 @@ fn read_tree(root: &Path, dir: &Path, depth: usize) -> AppResult<Vec<Entry>> {
         ("file", "dir") => Ordering::Greater,
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
-    Ok(entries)
+    entries
 }
 
 #[tauri::command]
@@ -125,7 +153,7 @@ pub fn open_vault(path: String) -> AppResult<VaultInfo> {
     let root = root.canonicalize()?;
     ensure_vault_dirs(&root)?;
 
-    let entries = read_tree(&root, &root, 0)?;
+    let entries = read_tree(&root)?;
     let name = root
         .file_name()
         .map(|value| value.to_string_lossy().to_string())
@@ -232,6 +260,8 @@ pub fn rename_entry(vault: String, from: String, to: String) -> AppResult<()> {
     Ok(())
 }
 
+/// Moves an entry into the vault-local `.markup-trash` folder instead of
+/// deleting it permanently. The trash folder is hidden from the tree/search.
 #[tauri::command]
 pub fn delete_entry(vault: String, rel: String) -> AppResult<()> {
     let root = PathBuf::from(&vault);
@@ -239,12 +269,30 @@ pub fn delete_entry(vault: String, rel: String) -> AppResult<()> {
     if normalize(&path) == normalize(&root) {
         return Err(AppError::Message("不能删除 Vault 根目录".into()));
     }
-    let meta = fs::metadata(&path).map_err(|_| AppError::Message(format!("路径不存在：{rel}")))?;
-    if meta.is_dir() {
-        fs::remove_dir_all(&path)?;
-    } else {
-        fs::remove_file(&path)?;
+    if !path.exists() {
+        return Err(AppError::Message(format!("路径不存在：{rel}")));
     }
+
+    let trash = root.join(".markup-trash");
+    fs::create_dir_all(&trash)?;
+
+    let name = path
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|| "item".into());
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+
+    let mut target = trash.join(format!("{stamp}-{name}"));
+    let mut index = 1;
+    while target.exists() {
+        target = trash.join(format!("{stamp}-{index}-{name}"));
+        index += 1;
+    }
+
+    fs::rename(&path, &target)?;
     Ok(())
 }
 
@@ -309,6 +357,7 @@ pub fn save_attachment(vault: String, name: String, data: String) -> AppResult<A
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::search_vault;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_vault() -> PathBuf {
@@ -346,6 +395,78 @@ mod tests {
         assert_eq!(doc.content, "中文\n第二行\n");
         assert_eq!(doc.encoding, "gbk");
         assert_eq!(doc.eol, "crlf");
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    fn collect_names(entries: &[Entry], out: &mut Vec<String>) {
+        for entry in entries {
+            out.push(entry.name.clone());
+            if let Some(children) = &entry.children {
+                collect_names(children, out);
+            }
+        }
+    }
+
+    #[test]
+    fn respects_gitignore_and_markupignore_in_tree_and_search() {
+        let root = temp_vault();
+        fs::write(root.join("keep.md"), "# keep\nneedle").unwrap();
+        fs::write(root.join("secret.md"), "needle").unwrap();
+        fs::write(root.join(".gitignore"), "secret.md\ndrafts/\n").unwrap();
+        fs::create_dir_all(root.join("drafts")).unwrap();
+        fs::write(root.join("drafts/note.md"), "needle").unwrap();
+        fs::write(root.join(".markupignore"), "private/\n").unwrap();
+        fs::create_dir_all(root.join("private")).unwrap();
+        fs::write(root.join("private/hidden.md"), "needle").unwrap();
+        fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+        fs::write(root.join("node_modules/pkg/dep.md"), "needle").unwrap();
+
+        let vault = root.to_string_lossy().to_string();
+        let info = open_vault(vault.clone()).unwrap();
+        let mut names = Vec::new();
+        collect_names(&info.entries, &mut names);
+
+        assert!(names.iter().any(|name| name == "keep.md"));
+        assert!(!names.iter().any(|name| name == "secret.md"));
+        assert!(!names.iter().any(|name| name == "note.md"));
+        assert!(!names.iter().any(|name| name == "hidden.md"));
+        assert!(!names.iter().any(|name| name == "node_modules"));
+
+        let hits = search_vault(vault, "needle".into(), None).unwrap();
+        assert_eq!(hits.len(), 1, "ignored files must not be searchable");
+        assert_eq!(hits[0].path, "keep.md");
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn delete_moves_entry_into_trash() {
+        let root = temp_vault();
+        fs::write(root.join("keep.md"), "# keep").unwrap();
+
+        let vault = root.to_string_lossy().to_string();
+        delete_entry(vault, "keep.md".into()).unwrap();
+
+        assert!(!root.join("keep.md").exists());
+        let trash = root.join(".markup-trash");
+        let entries: Vec<_> = fs::read_dir(&trash).unwrap().flatten().collect();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].file_name().to_string_lossy().contains("keep.md"));
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn tantivy_finds_chinese_substrings() {
+        let root = temp_vault();
+        fs::write(root.join("a.md"), "# 中文标题\n这是中文检索测试").unwrap();
+        fs::write(root.join("b.md"), "无关内容").unwrap();
+
+        let vault = root.to_string_lossy().to_string();
+        let hits = search_vault(vault, "中文".into(), None).unwrap();
+        assert!(hits.iter().any(|hit| hit.path == "a.md"));
+        assert!(!hits.iter().any(|hit| hit.path == "b.md"));
 
         fs::remove_dir_all(&root).ok();
     }

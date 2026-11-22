@@ -99,7 +99,9 @@ pub fn decode(bytes: &[u8]) -> AppResult<DecodedText> {
     }
 
     if bytes.contains(&0) {
-        return Err(AppError::Message("检测到二进制内容，无法作为 Markdown 打开".into()));
+        return Err(AppError::Message(
+            "检测到二进制内容，无法作为 Markdown 打开".into(),
+        ));
     }
 
     if let Ok(text) = std::str::from_utf8(bytes) {

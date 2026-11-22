@@ -63,5 +63,5 @@ export interface SaveAttachmentResult {
   name: string
 }
 
-export type ViewMode = 'wysiwyg' | 'source'
+export type ViewMode = 'wysiwyg' | 'source' | 'split'
 export type HtmlExportMode = 'folder' | 'single'

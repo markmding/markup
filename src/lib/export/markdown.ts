@@ -6,6 +6,7 @@ import remarkParse from 'remark-parse'
 import remarkRehype from 'remark-rehype'
 import { unified } from 'unified'
 import { visit } from 'unist-util-visit'
+import { renderMermaidSvg } from '../mermaid'
 
 const CALLOUT_LABEL: Record<string, string> = {
   note: '注意',
@@ -73,30 +74,19 @@ export async function renderMermaid(html: string, dark = false): Promise<string>
   const blocks = [...container.querySelectorAll('code.language-mermaid')]
   if (!blocks.length) return html
 
-  try {
-    const mermaid = (await import('mermaid')).default
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: dark ? 'dark' : 'default'
-    })
-    let index = 0
-    for (const block of blocks) {
-      const source = block.textContent ?? ''
-      const id = `markup-mermaid-${Date.now()}-${index++}`
-      try {
-        const { svg } = await mermaid.render(id, source)
-        const wrapper = document.createElement('div')
-        wrapper.className = 'mermaid-diagram'
-        wrapper.innerHTML = svg
-        block.closest('pre')?.replaceWith(wrapper)
-      } catch {
-        // Keep the original code block so the reader can still see the source.
-        block.parentElement?.classList.add('mermaid-error')
-      }
+  for (const block of blocks) {
+    const source = block.textContent ?? ''
+    if (!source.trim()) continue
+    try {
+      const svg = await renderMermaidSvg(source, dark)
+      const wrapper = document.createElement('div')
+      wrapper.className = 'mermaid-diagram'
+      wrapper.innerHTML = svg
+      block.closest('pre')?.replaceWith(wrapper)
+    } catch {
+      // Keep the original code block so the reader can still see the source.
+      block.parentElement?.classList.add('mermaid-error')
     }
-  } catch {
-    return html
   }
   return container.innerHTML
 }

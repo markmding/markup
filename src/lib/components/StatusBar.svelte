@@ -54,6 +54,7 @@
   </span>
   <span class="spacer"></span>
   {#if active}
+    {#if active.kind === 'text'}<span class="faint">纯文本</span>{/if}
     <span>{stats.words} 字 · {stats.lines} 行</span>
     <select
       class="status-select"

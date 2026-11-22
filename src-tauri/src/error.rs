@@ -6,6 +6,8 @@ pub enum AppError {
     Io(#[from] std::io::Error),
     #[error("路径越界（只允许访问 Vault 内部）：{0}")]
     OutsideVault(String),
+    #[error("搜索索引错误：{0}")]
+    Tantivy(#[from] tantivy::TantivyError),
     #[error("{0}")]
     Message(String),
 }

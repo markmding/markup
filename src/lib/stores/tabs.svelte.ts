@@ -2,6 +2,7 @@ import * as api from '../api/vault'
 import {
   basename,
   ensureMdExtension,
+  isMarkdown,
   joinPath,
   osDefaultEol,
   stripExtension
@@ -14,6 +15,8 @@ export interface Tab {
   id: string
   path: string
   title: string
+  /** Markdown tabs use the rich editor; text tabs always use the source editor. */
+  kind: 'markdown' | 'text'
   content: string
   mtime: number
   encoding: Encoding
@@ -21,6 +24,8 @@ export interface Tab {
   bom: boolean
   dirty: boolean
   saving: boolean
+  /** Bumped when content is replaced from disk, forcing the editor to remount. */
+  revision: number
 }
 
 export type SaveOutcome = 'saved' | 'conflict' | 'error' | 'noop'
@@ -30,6 +35,8 @@ class TabsStore {
   activeId = $state<string | null>(null)
   lastSavedAt = $state<number | null>(null)
   saveError = $state<string | null>(null)
+  /** Path whose on-disk mtime no longer matches the tab (non-blocking banner). */
+  conflict = $state<{ path: string } | null>(null)
 
   get active(): Tab | undefined {
     return this.tabs.find((tab) => tab.id === this.activeId)
@@ -47,17 +54,20 @@ class TabsStore {
     }
     if (!vault.root) return
     const doc = await api.readDoc(vault.root, path)
+    const markdown = isMarkdown(path)
     this.tabs.push({
       id: path,
       path,
-      title: stripExtension(basename(path)),
+      title: markdown ? stripExtension(basename(path)) : basename(path),
+      kind: markdown ? 'markdown' : 'text',
       content: doc.content,
       mtime: doc.mtime,
       encoding: doc.encoding,
       eol: doc.eol,
       bom: doc.bom,
       dirty: false,
-      saving: false
+      saving: false,
+      revision: 0
     })
     this.activeId = path
   }
@@ -99,11 +109,40 @@ class TabsStore {
     tab.dirty = true
   }
 
+  /** Resolves a save conflict from the non-blocking banner. */
+  async resolveConflict(path: string, action: 'reload' | 'overwrite'): Promise<boolean> {
+    const tab = this.tabs.find((item) => item.path === path)
+    if (!tab || !vault.root) return false
+
+    if (action === 'overwrite') {
+      const outcome = await this.save(path, true)
+      return outcome === 'saved'
+    }
+
+    try {
+      const doc = await api.readDoc(vault.root, tab.path)
+      tab.content = doc.content
+      tab.mtime = doc.mtime
+      tab.encoding = doc.encoding
+      tab.eol = doc.eol
+      tab.bom = doc.bom
+      tab.dirty = false
+      tab.revision += 1
+      this.conflict = null
+      this.saveError = null
+      return true
+    } catch (error) {
+      this.saveError = error instanceof Error ? error.message : String(error)
+      return false
+    }
+  }
+
   /** Drops all tabs when switching to another vault. */
   reset(): void {
     this.tabs = []
     this.activeId = null
     this.saveError = null
+    this.conflict = null
     this.lastSavedAt = null
   }
 
@@ -117,6 +156,8 @@ class TabsStore {
   async save(path: string, force = false): Promise<SaveOutcome> {
     const tab = this.tabs.find((item) => item.path === path)
     if (!tab || !vault.root) return 'noop'
+    // A pending conflict must be resolved explicitly; don't retry in the background.
+    if (this.conflict?.path === path && !force) return 'conflict'
     if (!tab.dirty && !force) return 'noop'
     if (tab.saving) return 'noop'
 
@@ -131,11 +172,13 @@ class TabsStore {
       tab.mtime = result.mtime
       tab.dirty = false
       this.lastSavedAt = Date.now()
+      if (this.conflict?.path === path) this.conflict = null
       return 'saved'
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.includes('CONFLICT')) {
-        this.saveError = '文件已被外部修改，保存被阻止'
+        this.conflict = { path }
+        this.saveError = null
         return 'conflict'
       }
       this.saveError = message
@@ -158,7 +201,10 @@ class TabsStore {
       if (tab.path === from) {
         tab.path = to
         tab.id = to
-        tab.title = stripExtension(basename(to))
+        // Renaming across types (e.g. note.md → note.txt) switches editors.
+        const markdown = isMarkdown(to)
+        tab.kind = markdown ? 'markdown' : 'text'
+        tab.title = markdown ? stripExtension(basename(to)) : basename(to)
       } else if (tab.path.startsWith(`${from}/`)) {
         const next = `${to}${tab.path.slice(from.length)}`
         tab.path = next
@@ -188,6 +234,7 @@ class TabsStore {
           : true
       if (!confirmed) return
     }
+    if (this.conflict?.path === tab.path) this.conflict = null
     const index = this.tabs.findIndex((item) => item.id === id)
     this.tabs.splice(index, 1)
     if (this.activeId === id) {
@@ -211,8 +258,13 @@ class TabsStore {
     if (!vault.root) return
     try {
       const doc = await api.readDoc(vault.root, tab.path)
-      if (!tab.dirty && doc.content !== tab.content) {
-        tab.content = doc.content
+      if (!tab.dirty) {
+        if (doc.content !== tab.content) {
+          tab.content = doc.content
+          tab.revision += 1
+        }
+        // Refresh metadata even when content is unchanged, so the next save
+        // does not false-positive on mtime.
         tab.mtime = doc.mtime
         tab.encoding = doc.encoding
         tab.eol = doc.eol

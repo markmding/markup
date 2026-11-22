@@ -97,7 +97,7 @@ export async function searchVault(
 }
 
 export async function readAttachment(root: string, rel: string): Promise<string | null> {
-  if (isDemoRoot(root)) return null
+  if (isDemoRoot(root)) return mock.readAttachment(rel)
   try {
     return await invoke<string | null>('read_attachment', { vault: root, rel })
   } catch {

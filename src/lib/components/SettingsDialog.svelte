@@ -4,6 +4,7 @@
     type AppTheme,
     type SettingsState
   } from '../stores/settings.svelte'
+  import { themes } from '../stores/themes.svelte'
 
   let { open, onclose }: { open: boolean; onclose: () => void } = $props()
 
@@ -11,6 +12,12 @@
 
   function update<K extends keyof SettingsState>(key: K, value: SettingsState[K]): void {
     settings.update({ [key]: value } as Partial<SettingsState>)
+  }
+
+  function changeDocTheme(value: string): void {
+    settings.update({ documentTheme: value })
+    if (value === 'light' || value === 'dark') settings.setTheme(value)
+    themes.applySelection()
   }
 </script>
 
@@ -40,6 +47,37 @@
             <option value="dark">深色</option>
             <option value="system">跟随系统</option>
           </select>
+        </div>
+
+        <div class="field" style="margin-bottom:12px">
+          <label for="doc-theme">文档主题</label>
+          <select
+            id="doc-theme"
+            value={s.documentTheme}
+            onchange={(event) => changeDocTheme(event.currentTarget.value)}
+          >
+            <option value="light">浅色</option>
+            <option value="dark">深色</option>
+            {#each themes.items as theme (theme.path)}
+              <option value={`theme:${theme.path}`}>{theme.name}</option>
+            {/each}
+          </select>
+          <span class="hint">
+            {#if themes.loading}
+              正在读取 themes/ …
+            {:else if themes.items.length === 0}
+              在 Vault 的 themes/ 目录放置 .css 文件即可作为主题
+            {:else}
+              已加载 {themes.items.length} 个自定义主题（themes/*.css）
+            {/if}
+          </span>
+          <button
+            class="button"
+            style="align-self:flex-start;margin-top:6px;height:28px"
+            onclick={() => void themes.load()}
+          >
+            刷新主题
+          </button>
         </div>
 
         <div class="field" style="margin-bottom:12px">
@@ -110,6 +148,36 @@
             aria-checked={s.spellcheck}
             aria-label="拼写检查"
             onclick={() => update('spellcheck', !s.spellcheck)}
+          ></button>
+        </div>
+
+        <h3 style="font-size:13px;margin:18px 0 4px">编辑器与渲染</h3>
+        <div class="switch-row">
+          <div class="switch-label">
+            <strong>渲染 Mermaid 图表</strong>
+            <span>关闭后编辑器、导出预览与导出的 HTML 都保留 Mermaid 源码块，不做图表渲染</span>
+          </div>
+          <button
+            class="switch"
+            class:on={s.renderMermaid}
+            role="switch"
+            aria-checked={s.renderMermaid}
+            aria-label="渲染 Mermaid 图表"
+            onclick={() => update('renderMermaid', !s.renderMermaid)}
+          ></button>
+        </div>
+        <div class="switch-row">
+          <div class="switch-label">
+            <strong>长文档分块渲染（实验）</strong>
+            <span>视口外的块卸载 DOM 内容、滚动时按需恢复，降低长文档内存占用与输入卡顿</span>
+          </div>
+          <button
+            class="switch"
+            class:on={s.chunkedRendering}
+            role="switch"
+            aria-checked={s.chunkedRendering}
+            aria-label="长文档分块渲染"
+            onclick={() => update('chunkedRendering', !s.chunkedRendering)}
           ></button>
         </div>
 

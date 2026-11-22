@@ -3,8 +3,9 @@
   import { isTauri, pickExportFile, pickExportFolder } from '../api/tauri'
   import { downloadBase64, downloadText } from '../export/download'
   import { buildHtmlExport } from '../export/html'
-  import { printHtml } from '../export/pdf'
+  import { paginateHtml, printHtml } from '../export/pdf'
   import { settings } from '../stores/settings.svelte'
+  import { themes } from '../stores/themes.svelte'
   import type { Tab } from '../stores/tabs.svelte'
   import { vault } from '../stores/vault.svelte'
   import type { ExportFile, HtmlExportMode } from '../types'
@@ -24,6 +25,8 @@
   let pageStart = $state(1)
   let preview = $state('')
   let missing = $state<string[]>([])
+  let pageCount = $state(0)
+  let pageBusy = $state(false)
   let busy = $state(false)
   let message = $state<{ kind: 'info' | 'warning' | 'danger'; text: string } | null>(null)
 
@@ -51,7 +54,9 @@
         markdown,
         title,
         mode: 'single',
-        theme: mode
+        theme: mode,
+        renderDiagrams: settings.value.renderMermaid,
+        customCss: themes.customCss
       })
         .then((result) => {
           if (cancelled) return
@@ -62,6 +67,22 @@
               kind: 'warning',
               text: `有 ${result.missing.length} 个附件未找到：${result.missing.join('、')}`
             }
+          }
+          if (format === 'pdf') {
+            pageBusy = true
+            pageCount = 0
+            void paginateHtml(result.html)
+              .then((paginated) => {
+                if (!cancelled) pageCount = paginated.total
+              })
+              .catch(() => {
+                if (!cancelled) pageCount = 0
+              })
+              .finally(() => {
+                if (!cancelled) pageBusy = false
+              })
+          } else {
+            pageCount = 0
           }
         })
         .catch((error) => {
@@ -87,7 +108,9 @@
         markdown: tab.content,
         title: tab.title,
         mode: htmlMode,
-        theme
+        theme,
+        renderDiagrams: settings.value.renderMermaid,
+        customCss: themes.customCss
       })
       if (result.missing.length) {
         missing = result.missing
@@ -142,13 +165,18 @@
         markdown: tab.content,
         title: tab.title,
         mode: 'single',
-        theme
+        theme,
+        renderDiagrams: settings.value.renderMermaid,
+        customCss: themes.customCss
       })
-      await printHtml(result.html, {
+      const printed = await printHtml(result.html, {
         pageStart,
         range: { mode: rangeMode, from, to }
       })
-      message = { kind: 'info', text: '已打开系统打印对话框，请选择「另存为 PDF」。' }
+      message = {
+        kind: 'info',
+        text: `已选择 ${printed.printed} / ${printed.total} 页，已打开系统打印对话框。`
+      }
     } catch (error) {
       message = { kind: 'danger', text: `打印失败：${String(error)}` }
     } finally {
@@ -276,8 +304,13 @@
             {/if}
             <div class="field full">
               <span class="hint">
-                页码由系统打印对话框的页眉页脚控制；WebView 对「指定页码范围 / 自定义页码」
-                的支持需在 M0 双平台验证（PRD R2）。
+                {#if pageBusy}
+                  正在按 A4 计算页数…
+                {:else if pageCount > 0}
+                  共 {pageCount} 页（A4 自动分页）；页码从 {pageStart} 开始编号。
+                {:else}
+                  预览计算完成后会显示总页数。
+                {/if}
               </span>
             </div>
           {:else}

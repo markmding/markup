@@ -2,12 +2,20 @@
   // CodeMirror is ~1MB of JS; only pull it in when the source view is used.
   let {
     value,
-    onchange,
-    onblur
+    filename = '',
+    onchange = () => {},
+    onblur,
+    readonly = false,
+    onready,
+    onbeforeupdate
   }: {
     value: string
-    onchange: (next: string) => void
+    filename?: string
+    onchange?: (next: string) => void
     onblur?: () => void
+    readonly?: boolean
+    onready?: (view: import('@codemirror/view').EditorView | null) => void
+    onbeforeupdate?: () => void
   } = $props()
 
   let Loaded = $state<any>(null)
@@ -24,7 +32,7 @@
 </script>
 
 {#if Loaded}
-  <Loaded {value} {onchange} {onblur} />
+  <Loaded {value} {filename} {onchange} {onblur} {readonly} {onready} {onbeforeupdate} />
 {:else}
   <div class="empty">正在加载源码视图…</div>
 {/if}

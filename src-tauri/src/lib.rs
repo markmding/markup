@@ -1,6 +1,7 @@
 mod commands;
 mod encoding;
 mod error;
+mod index;
 mod paths;
 
 pub use commands::*;

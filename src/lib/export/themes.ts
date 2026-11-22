@@ -119,7 +119,12 @@ export function katexStylesheet(): string {
   return katexCss
 }
 
-export function buildDocument(title: string, bodyHtml: string, theme: ExportTheme): string {
+export function buildDocument(
+  title: string,
+  bodyHtml: string,
+  theme: ExportTheme,
+  customCss = ''
+): string {
   return `<!doctype html>
 <html lang="zh-CN" data-theme="${theme}">
 <head>
@@ -128,6 +133,7 @@ export function buildDocument(title: string, bodyHtml: string, theme: ExportThem
 <title>${escapeHtml(title)}</title>
 <style>${exportThemeCss(theme)}</style>
 <style>${katexStylesheet()}</style>
+${customCss ? `<style>\n${customCss}\n</style>` : ''}
 </head>
 <body>
 <main class="markup-doc">${bodyHtml}</main>

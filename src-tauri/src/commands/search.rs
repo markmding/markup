@@ -5,11 +5,10 @@
 //! Replace the body with a background index; the response shape stays the same.
 
 use crate::error::{AppError, AppResult};
-use crate::paths::SKIP_DIRS;
+use crate::paths::vault_walker;
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
-use walkdir::{DirEntry, WalkDir};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,14 +17,6 @@ pub struct SearchHit {
     pub title: String,
     pub snippet: String,
     pub score: usize,
-}
-
-fn is_skipped(entry: &DirEntry) -> bool {
-    if entry.depth() == 0 {
-        return false;
-    }
-    let name = entry.file_name().to_string_lossy();
-    name.starts_with('.') || SKIP_DIRS.contains(&name.as_ref())
 }
 
 fn is_markdown(path: &Path) -> bool {
@@ -64,6 +55,27 @@ pub fn search_vault(
     if !root.is_dir() {
         return Err(AppError::Message(format!("不是有效的文件夹：{vault}")));
     }
+    let needle = query.trim().to_string();
+    if needle.is_empty() {
+        return Ok(Vec::new());
+    }
+    let max = limit.unwrap_or(50).clamp(1, 200);
+
+    // One-character queries produce no 2–3 grams; use the scan directly.
+    if needle.chars().count() >= 2 {
+        if let Ok(hits) = crate::index::search(&vault, &needle, max) {
+            return Ok(hits);
+        }
+    }
+    scan_search(vault, needle, Some(max))
+}
+
+/// Linear fallback used when tantivy cannot build an index.
+fn scan_search(vault: String, query: String, limit: Option<usize>) -> AppResult<Vec<SearchHit>> {
+    let root = Path::new(&vault);
+    if !root.is_dir() {
+        return Err(AppError::Message(format!("不是有效的文件夹：{vault}")));
+    }
     let needle = query.trim().to_lowercase();
     if needle.is_empty() {
         return Ok(Vec::new());
@@ -71,13 +83,14 @@ pub fn search_vault(
     let limit = limit.unwrap_or(50).clamp(1, 200);
 
     let mut hits = Vec::new();
-    for entry in WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|entry| !is_skipped(entry))
-        .flatten()
-    {
-        if !entry.file_type().is_file() || !is_markdown(entry.path()) {
+    for entry in vault_walker(root).flatten() {
+        if entry.depth() == 0 {
+            continue;
+        }
+        let Some(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_file() || !is_markdown(entry.path()) {
             continue;
         }
         let content = match fs::read_to_string(entry.path()) {
@@ -91,10 +104,7 @@ pub fn search_vault(
         }
         let index = lower.find(&needle).unwrap_or(0);
         let start = clamp_boundary(&content, index.saturating_sub(40));
-        let end = clamp_boundary(
-            &content,
-            (index + needle.len() + 90).min(content.len()),
-        );
+        let end = clamp_boundary(&content, (index + needle.len() + 90).min(content.len()));
         let fallback = entry
             .path()
             .file_stem()

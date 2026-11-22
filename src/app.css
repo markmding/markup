@@ -103,7 +103,7 @@ textarea:focus {
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
-  grid-template-rows: 44px 1fr 26px;
+  grid-template-rows: 40px 36px 1fr 26px;
   height: 100%;
 }
 
@@ -111,55 +111,155 @@ textarea:focus {
   grid-template-columns: 0 1fr;
 }
 
-.topbar {
+/* ---------- Menu bar / frameless title bar ---------- */
+
+.menubar {
   grid-column: 1 / -1;
+  grid-row: 1;
+  position: relative;
+  z-index: 50;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px 0 12px;
-  border-bottom: 1px solid var(--border);
+  gap: 4px;
+  padding: 0 4px 0 8px;
   background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
+  user-select: none;
 }
 
-.topbar > * {
-  -webkit-app-region: no-drag;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 650;
-  letter-spacing: 0.2px;
-  margin-right: 4px;
-}
-
-.brand-mark {
+.app-mark {
   display: grid;
   place-items: center;
   width: 22px;
   height: 22px;
+  margin: 0 6px 0 2px;
   border-radius: 6px;
   background: linear-gradient(135deg, #6366f1, #3f33b8);
   color: #fff;
   font-size: 13px;
   font-weight: 800;
+  -webkit-app-region: no-drag;
 }
 
-.topbar-vault {
-  color: var(--text-muted);
-  font-size: 12px;
-  max-width: 280px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.menus {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 1px;
+  -webkit-app-region: no-drag;
+}
+
+.menu-root {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.menu-trigger {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.menu-trigger:hover,
+.menu-trigger.open {
+  background: var(--bg-hover);
+}
+
+.menu-pop {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0;
+  min-width: 216px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  z-index: 200;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
   white-space: nowrap;
-  padding-left: 8px;
-  border-left: 1px solid var(--border);
 }
 
-.topbar-spacer {
+.menu-item:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.menu-check {
+  width: 12px;
+  flex: none;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.menu-label {
   flex: 1;
+}
+
+.menu-shortcut {
+  color: var(--text-faint);
+  font-size: 12px;
+  padding-left: 18px;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.menubar-spacer {
+  flex: 1;
+  align-self: stretch;
+}
+
+.menubar-sidebar {
+  height: 28px;
+  margin-right: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.window-controls {
+  display: flex;
+  align-self: stretch;
+  margin-left: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.window-btn {
+  width: 46px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 0;
+}
+
+.window-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.window-btn.close:hover {
+  background: #e81123;
+  color: #fff;
 }
 
 .icon-btn {
@@ -227,6 +327,8 @@ textarea:focus {
 /* ---------- Sidebar ---------- */
 
 .sidebar {
+  grid-column: 1;
+  grid-row: 3;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -268,6 +370,54 @@ textarea:focus {
   flex: 1;
   overflow: auto;
   padding: 4px 6px 12px;
+}
+
+.search-section-title {
+  padding: 10px 8px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.search-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.search-hit:hover {
+  background: var(--bg-hover);
+}
+
+.search-hit-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.search-hit-path {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.search-hit-snippet {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .tree-row {
@@ -365,6 +515,8 @@ textarea:focus {
 /* ---------- Main / tabs ---------- */
 
 .main {
+  grid-column: 2;
+  grid-row: 3;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -373,6 +525,8 @@ textarea:focus {
 }
 
 .tabbar {
+  grid-column: 1 / -1;
+  grid-row: 2;
   display: flex;
   align-items: stretch;
   height: 36px;
@@ -438,6 +592,33 @@ textarea:focus {
   margin: 0 5px;
 }
 
+.conflict-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(217, 119, 6, 0.13);
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.conflict-bar .conflict-hint {
+  opacity: 0.75;
+}
+
+.conflict-bar .button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.conflict-bar .button.primary {
+  background: var(--warning);
+  color: #fff;
+}
+
 .editor-area {
   position: relative;
   flex: 1;
@@ -446,7 +627,11 @@ textarea:focus {
 }
 
 .editor-host {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   font-size: var(--editor-font-size);
 }
 
@@ -473,6 +658,102 @@ textarea:focus {
 
 .editor-host .milkdown .ProseMirror:focus {
   outline: none;
+}
+
+/*
+ * F2.7 long-document virtualization.
+ *
+ * Stage 1: let the browser skip layout/paint for blocks outside the viewport.
+ * Stage 2 (virtual-blocks.ts): plain top-level blocks far outside the viewport
+ * move their rendered children into a DocumentFragment, keeping only a
+ * min-height shell. Scroll position stays stable and the same nodes are put
+ * back when the block approaches the viewport.
+ */
+.editor-host.chunked .milkdown .ProseMirror > *:not(.ProseMirror-gapcursor):not(.ProseMirror-widget):not(.ProseMirror-separator) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+
+/* Stage 2: content detached from these shells while far outside the viewport */
+.editor-host .milkdown .ProseMirror > .mk-block-detached {
+  content-visibility: hidden;
+  contain: layout style paint;
+}
+
+/* Callouts in the editor (marker stays in the AST, hidden visually) */
+.editor-host .milkdown .ProseMirror blockquote.mk-callout {
+  margin: 1em 0;
+  padding: 0.65em 1em;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+
+.editor-host .milkdown .ProseMirror blockquote.mk-callout::before {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 650;
+  font-size: 0.92em;
+}
+
+.mk-callout-marker {
+  display: none;
+}
+
+.mk-callout-tip::before { content: '提示'; color: #16a34a; }
+.mk-callout-note::before { content: '注意'; color: var(--accent); }
+.mk-callout-warning::before { content: '警告'; color: #d97706; }
+.mk-callout-danger::before { content: '危险'; color: var(--danger); }
+.mk-callout-info::before { content: '信息'; color: #0284c7; }
+.mk-callout-success::before { content: '完成'; color: #15803d; }
+
+/* Mermaid preview inside Crepe's code block panel */
+.editor-host .preview-panel .preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-render-error {
+  padding: 12px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.editor-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor-split.split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.editor-split.split > .editor-host {
+  border-right: 1px solid var(--border);
+}
+
+.split-source {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Plain-text files (css / js / txt …) */
+.text-host {
+  height: 100%;
+  min-height: 0;
+}
+
+.text-host .source-host .cm-content {
+  max-width: 1200px;
+  padding: 20px 28px 120px;
 }
 
 .source-host {
@@ -580,6 +861,7 @@ kbd {
 
 .statusbar {
   grid-column: 1 / -1;
+  grid-row: 4;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -836,6 +1118,10 @@ kbd {
 .alert.danger {
   background: rgba(220, 38, 38, 0.1);
   color: var(--danger);
+}
+
+.modal-body .alert {
+  margin-top: 14px;
 }
 
 .muted {
